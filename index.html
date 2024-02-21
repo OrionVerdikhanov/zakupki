@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ежедневник закупок</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
+<style>
+    body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f4; }
+    .modal, .edit-modal { display: none; position: fixed; z-index: 1; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+    .modal-content, .edit-modal-content { background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 50%; }
+    .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; }
+    .close:hover, .close:focus { color: black; text-decoration: none; cursor: pointer; }
+    .purchase { padding: 10px; background-color: #fff; margin-bottom: 10px; border-radius: 5px; display: flex; align-items: center; justify-content: space-between; }
+    .purchase:hover { background-color: #f0f0f0; }
+    .purchase-info { cursor: pointer; flex-grow: 1; }
+    .purchase-actions { display: flex; align-items: center; }
+    .purchase-title { font-weight: bold; }
+    .stage { padding: 5px 0; }
+    .completed { text-decoration: line-through; }
+    #newPurchaseName { padding: 8px; width: 300px; margin-right: 10px; }
+    button { padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    button:hover { background-color: #0056b3; }
+    .edit, .delete { font-size: 20px; cursor: pointer; margin-left: 10px; }
+    .edit:hover, .delete:hover { color: #0056b3; }
+    .input-edit { width: 100%; padding: 10px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h2>Ежедневник закупок</h2>
+<input type="text" id="newPurchaseName" placeholder="Название закупки">
+<button onclick="addPurchase()">Добавить закупку</button>
+<div id="purchases"></div>
+
+<div id="myModal" class="modal">
+  <div class="modal-content">
+    <span class="close">&times;</span>
+    <h2 id="modalTitle"></h2>
+    <div id="modalStages"></div>
+  </div>
+</div>
+
+<div id="editModal" class="edit-modal">
+  <div class="edit-modal-content">
+    <span class="edit-close">&times;</span>
+    <input type="text" id="editPurchaseName" class="input-edit">
+    <button onclick="saveEditedPurchase()">Сохранить изменения</button>
+  </div>
+</div>
+
+<script>
+const stages = [
+    "Сбор ТЗ",
+    "Создание КП",
+    "Создание ТЗ",
+    "Архивы с документами договора и формой предоставления информации",
+    "Публикация закупки",
+    "Сбор первичного этапа",
+    "Объявление переторжки",
+    "Сбор предложений с переторжки",
+    "Создание ПБС",
+    "Заполнение формуляра",
+    "Загрузка формуляра",
+    "Получение первичной заявки",
+    "Получение сводной заявки",
+    "Создание НПП",
+    "Редактирование формата НПП",
+    "Подписывание НПП у А. Н. Дербуша",
+    "Подписывание НПП у директора",
+    "Забирание НПП из приемной",
+    "Отправка НПП на согласование в ГО",
+    "НПП согласовано",
+    "Создание сводного лота",
+    "Заполнение данных по закупке в сводном лоте",
+    "Утверждение сводного лота",
+    "Записываем номер сводного лота",
+    "Заполняем документы и отправляем в ПЭО",
+    "ПЭО согласовал",
+    "Отправляем анкету к С. Э. Князяну",
+    "Должная осмотрительность пройдена",
+    "Запрос справки обоснования + расчета",
+    "Отдать обоснование + расчет на подпись директору",
+    "Забрать справку обоснование + расчет",
+    "Создать свод решеинй к ЗК",
+    "Загрузить в папку с ЗК МТР документы по закупке",
+    "ЗК пройдено",
+    "Создание АС в SAP",
+    "Выбор поставщика",
+    "Создание УоНП в уведомлении проработки",
+    "Отправка УоНП на согласование",
+    "Загрузка документов в АС",
+    "Отправка АС на согласование в ГО",
+    "АС согласовано",
+    "Создаем карточку договора",
+    "Карточка заполнена",
+    "Договор заполнен",
+    "Прикрепляем договор + доп документы в SAP",
+    "Отправка на согласование",
+    "Согласовано",
+    "Выгрузка договора из SAP",
+    "Загрузка договора на КИМ",
+    "Уведомить поставщика о загрузке",
+    "Договор подписан поставщиком",
+    "Направить на подпись директору",
+    "Договор подписан директором",
+    "Выгружаем подписанный пакет и загружаем в SAP",
+    "Договор перешел в статус подписан",
+    "Ожидаем поставки",
+    "Поставка осуществлена"
+];
+const maxPurchases = 20; // Максимальное количество закупок
+let editingPurchaseIndex = null; // Индекс редактируемой закупки
+
+const loadPurchases = () => JSON.parse(localStorage.getItem("purchases") || "[]");
+const savePurchases = (purchases) => localStorage.setItem("purchases", JSON.stringify(purchases));
+
+// Обработчики модальных окон
+const modal = document.getElementById("myModal");
+const editModal = document.getElementById("editModal");
+const span = document.getElementsByClassName("close")[0];
+const editSpan = document.getElementsByClassName("edit-close")[0];
+
+span.onclick = function() { modal.style.display = "none"; }
+editSpan.onclick = function() { editModal.style.display = "none"; }
+window.onclick = function(event) { 
+    if (event.target == modal) { modal.style.display = "none"; }
+    if (event.target == editModal) { editModal.style.display = "none"; }
+}
+
+const displayPurchases = () => {
+    const purchases = loadPurchases();
+    const purchasesContainer = document.getElementById("purchases");
+    purchasesContainer.innerHTML = "";
+    purchases.forEach((purchase, index) => {
+        const purchaseEl = document.createElement("div");
+        purchaseEl.className = "purchase";
+        const purchaseInfo = `<div class="purchase-info" onclick="showPurchaseModal(${index})"><div class="purchase-title">${purchase.name}</div></div>`;
+        const purchaseActions = `<div class="purchase-actions"><i class="fas fa-edit edit" onclick="editPurchase(${index})"></i><i class="fas fa-trash delete" onclick="deletePurchase(${index})"></i></div>`;
+        purchaseEl.innerHTML = purchaseInfo + purchaseActions;
+        purchasesContainer.appendChild(purchaseEl);
+    });
+};
+
+const addPurchase = () => {
+    const purchases = loadPurchases();
+    if (purchases.length >= maxPurchases) {
+        alert('Достигнуто максимальное количество закупок.');
+        return;
+    }
+    const purchaseName = document.getElementById("newPurchaseName").value;
+    if (purchaseName) {
+        purchases.push({ name: purchaseName, stages: new Array(stages.length).fill(false) });
+        savePurchases(purchases);
+        displayPurchases();
+        document.getElementById("newPurchaseName").value = "";
+    } else {
+        alert('Введите название закупки.');
+    }
+};
+
+const toggleStage = (purchaseIndex, stageIndex) => {
+    const purchases = loadPurchases();
+    purchases[purchaseIndex].stages[stageIndex] = !purchases[purchaseIndex].stages[stageIndex];
+    savePurchases(purchases);
+    showPurchaseModal(purchaseIndex); // Обновление модального окна
+};
+
+const showPurchaseModal = (index) => {
+    const purchases = loadPurchases();
+    const purchase = purchases[index];
+    document.getElementById("modalTitle").innerText = purchase.name;
+    const modalStages = document.getElementById("modalStages");
+    modalStages.innerHTML = "";
+    purchase.stages.forEach((completed, stageIndex) => {
+        const stageEl = document.createElement("div");
+        stageEl.className = `stage ${completed ? "completed" : ""}`;
+        stageEl.innerText = stages[stageIndex];
+        stageEl.onclick = () => toggleStage(index, stageIndex);
+        modalStages.appendChild(stageEl);
+    });
+    modal.style.display = "block";
+};
+
+const editPurchase = (index) => {
+    editingPurchaseIndex = index;
+    const purchases = loadPurchases();
+    document.getElementById("editPurchaseName").value = purchases[index].name;
+    editModal.style.display = "block";
+};
+
+const saveEditedPurchase = () => {
+    const newName = document.getElementById("editPurchaseName").value;
+    const purchases = loadPurchases();
+    if (editingPurchaseIndex !== null && newName) {
+        purchases[editingPurchaseIndex].name = newName;
+        savePurchases(purchases);
+        displayPurchases();
+        editModal.style.display = "none";
+    } else {
+        alert('Введите новое название закупки.');
+    }
+};
+
+const deletePurchase = (index) => {
+    const purchases = loadPurchases();
+    if (confirm('Вы уверены, что хотите удалить эту закупку?')) {
+        purchases.splice(index, 1);
+        savePurchases(purchases);
+        displayPurchases();
+    }
+};
+
+displayPurchases();
+</script>
+</body>
+</html>
